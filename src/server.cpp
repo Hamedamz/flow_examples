@@ -6,13 +6,33 @@
 #include "fdbrpc/FlowTransport.h"
 #include "fdbrpc/fdbrpc.h"
 #include "flow/TLSConfig.actor.g.h"
+#include "flow/flow.h"
+#include "fdbrpc/FlowTransport.h"
 
-// Define the server interface
+// Define the wrapped integer with serialization support
+struct IntWrapper
+{
+  int value;
+
+  template <class Ar>
+  void serialize(Ar &ar)
+  {
+    serializer(ar, value);
+  }
+};
+
+template <>
+struct FileIdentifierFor<IntWrapper>
+{
+  static constexpr uint8_t value = 1;
+};
+
+// Define the server interface using the wrapped type
 struct CountingServerInterface
 {
-  RequestStream<int> addCount;
-  RequestStream<int> subtractCount;
-  RequestStream<ReplyPromise<int>> getCount;
+  RequestStream<IntWrapper> addCount;
+  RequestStream<IntWrapper> subtractCount;
+  RequestStream<ReplyPromise<IntWrapper>> getCount;
 
   template <class Ar>
   void serialize(Ar &ar)
@@ -28,17 +48,17 @@ ACTOR Future<Void> countingServer(CountingServerInterface csi)
 
   loop choose
   {
-    when(int add = waitNext(csi.addCount.getFuture()))
+    when(IntWrapper add = waitNext(csi.addCount.getFuture()))
     {
-      count += add;
+      count += add.value;
     }
-    when(int subtract = waitNext(csi.subtractCount.getFuture()))
+    when(IntWrapper subtract = waitNext(csi.subtractCount.getFuture()))
     {
-      count -= subtract;
+      count -= subtract.value;
     }
-    when(ReplyPromise<int> reply = waitNext(csi.getCount.getFuture()))
+    when(ReplyPromise<IntWrapper> reply = waitNext(csi.getCount.getFuture()))
     {
-      reply.send(count);
+      reply.send(IntWrapper{count});
     }
   }
 }
@@ -48,8 +68,8 @@ ACTOR Future<Void> startServer()
 {
   state CountingServerInterface csi;
 
-  // Start the counting server actor
-  countingServer(csi);
+  // Start the counting server actor and ensure it's waited upon
+  wait(countingServer(csi));
 
   // Keep the server running
   wait(Never());
