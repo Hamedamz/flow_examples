@@ -9,24 +9,12 @@
 #include "flow/flow.h"
 #include "fdbrpc/FlowTransport.h"
 
+#include "server_interface.h"
+
 template <>
 struct FileIdentifierFor<IntWrapper>
 {
   static constexpr uint8_t value = 1;
-};
-
-// Define the server interface using the wrapped type
-struct CountingServerInterface
-{
-  RequestStream<IntWrapper> addCount;
-  RequestStream<IntWrapper> subtractCount;
-  RequestStream<ReplyPromise<IntWrapper>> getCount;
-
-  template <class Ar>
-  void serialize(Ar &ar)
-  {
-    serializer(ar, addCount, subtractCount, getCount);
-  }
 };
 
 // Actor to handle requests
