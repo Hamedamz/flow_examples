@@ -7,6 +7,7 @@
 #include "fdbrpc/fdbrpc.h"
 #include "flow/TLSConfig.actor.g.h"
 
+// Define the server interface
 struct CountingServerInterface
 {
   RequestStream<int> addCount;
@@ -20,41 +21,50 @@ struct CountingServerInterface
   }
 };
 
-ACTOR Future<Void> countingServer(CountingServerInterface csi)
+// Define a class to handle requests
+class CountingServer : public NetworkMessageReceiver
 {
-  state int count = 0;
+public:
+  CountingServer() : count(0) {}
 
-  loop
+  void receive(RequestStream<int>::RequestT req)
   {
-    choose
+    if (req.isFor(csi.addCount.getEndpoint()))
     {
-      when(int addValue = waitNext(csi.addCount.getFuture()))
-      {
-        count += addValue;
-      }
-      when(int subtractValue = waitNext(csi.subtractCount.getFuture()))
-      {
-        count -= subtractValue;
-      }
-      when(ReplyPromise<int> reply = waitNext(csi.getCount.getFuture()))
-      {
-        reply.send(count);
-      }
+      count += req;
+    }
+    else if (req.isFor(csi.subtractCount.getEndpoint()))
+    {
+      count -= req;
     }
   }
-}
 
-ACTOR Future<Void> startServer()
-{
+  void receive(RequestStream<ReplyPromise<int>>::RequestT req)
+  {
+    if (req.isFor(csi.getCount.getEndpoint()))
+    {
+      req.reply.send(count);
+    }
+  }
+
+  void setupEndpoints()
+  {
+    FlowTransport::transport().addEndpoint(csi.addCount.getEndpoint(), this, TaskPriority::DefaultOnRunLoop);
+    FlowTransport::transport().addEndpoint(csi.subtractCount.getEndpoint(), this, TaskPriority::DefaultOnRunLoop);
+    FlowTransport::transport().addEndpoint(csi.getCount.getEndpoint(), this, TaskPriority::DefaultOnRunLoop);
+  }
+
   CountingServerInterface csi;
 
-  // Start the counting server actor
-  countingServer(csi);
+private:
+  int count;
+};
 
-  // Register the CountingServerInterface for clients
-  FlowTransport::transport().addEndpoint(csi.addCount.getEndpoint());
-  FlowTransport::transport().addEndpoint(csi.subtractCount.getEndpoint());
-  FlowTransport::transport().addEndpoint(csi.getCount.getEndpoint());
+// Server setup to listen for connections and provide the CountingServerInterface
+ACTOR Future<Void> startServer()
+{
+  state CountingServer server;
+  server.setupEndpoints();
 
   printf("Server is running and waiting for clients...\n");
 
@@ -63,14 +73,15 @@ ACTOR Future<Void> startServer()
   return Void();
 }
 
+// Entry point for the server
 int main(int argc, char **argv)
 {
   // Initialize the Flow network
   Error::init();
-  FlowTransport::createInstance(false, 1);
+  FlowTransport::createInstance(false, 1, 1, nullptr);
 
   // Start the server
-  startServer();
+  Future<Void> serverFuture = startServer();
 
   // Run the network
   g_network->run();
