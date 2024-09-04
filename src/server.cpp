@@ -9,18 +9,6 @@
 #include "flow/flow.h"
 #include "fdbrpc/FlowTransport.h"
 
-// Define the wrapped integer with serialization support
-struct IntWrapper
-{
-  int value;
-
-  template <class Ar>
-  void serialize(Ar &ar)
-  {
-    serializer(ar, value);
-  }
-};
-
 template <>
 struct FileIdentifierFor<IntWrapper>
 {

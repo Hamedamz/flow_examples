@@ -20,4 +20,16 @@ struct CountingServerInterface
   }
 };
 
+// Define the wrapped integer with serialization support
+struct IntWrapper
+{
+  int value;
+
+  template <class Ar>
+  void serialize(Ar &ar)
+  {
+    serializer(ar, value);
+  }
+};
+
 #endif // SERVER_INTERFACE_H
