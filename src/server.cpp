@@ -21,59 +21,42 @@ struct CountingServerInterface
   }
 };
 
-// Define a class to handle requests
-class CountingServer : public NetworkMessageReceiver
+// Actor to handle requests
+ACTOR Future<Void> countingServer(CountingServerInterface csi)
 {
-public:
-  CountingServer() : count(0) {}
+  state int count = 0;
 
-  void receive(RequestStream<int>::RequestT req)
+  loop choose
   {
-    if (req.isFor(csi.addCount.getEndpoint()))
+    when(int add = waitNext(csi.addCount.getFuture()))
     {
-      count += req;
+      count += add;
     }
-    else if (req.isFor(csi.subtractCount.getEndpoint()))
+    when(int subtract = waitNext(csi.subtractCount.getFuture()))
     {
-      count -= req;
+      count -= subtract;
     }
-  }
-
-  void receive(RequestStream<ReplyPromise<int>>::RequestT req)
-  {
-    if (req.isFor(csi.getCount.getEndpoint()))
+    when(ReplyPromise<int> reply = waitNext(csi.getCount.getFuture()))
     {
-      req.reply.send(count);
+      reply.send(count);
     }
   }
+}
 
-  void setupEndpoints()
-  {
-    FlowTransport::transport().addEndpoint(csi.addCount.getEndpoint(), this, TaskPriority::DefaultOnRunLoop);
-    FlowTransport::transport().addEndpoint(csi.subtractCount.getEndpoint(), this, TaskPriority::DefaultOnRunLoop);
-    FlowTransport::transport().addEndpoint(csi.getCount.getEndpoint(), this, TaskPriority::DefaultOnRunLoop);
-  }
-
-  CountingServerInterface csi;
-
-private:
-  int count;
-};
-
-// Server setup to listen for connections and provide the CountingServerInterface
+// Server setup
 ACTOR Future<Void> startServer()
 {
-  state CountingServer server;
-  server.setupEndpoints();
+  state CountingServerInterface csi;
 
-  printf("Server is running and waiting for clients...\n");
+  // Start the counting server actor
+  countingServer(csi);
 
   // Keep the server running
   wait(Never());
   return Void();
 }
 
-// Entry point for the server
+// Entry point
 int main(int argc, char **argv)
 {
   // Initialize the Flow network
