@@ -1,6 +1,6 @@
+#include <iostream>
+#include <vector>
 #include "flow/flow.h"
-#include "flow/TCPListener.h"
-#include "flow/TCP.h"
 #include "flow/network.h"
 #include "flow/IConnection.h"
 #include "fdbrpc/FlowTransport.h"
@@ -9,9 +9,9 @@
 
 struct CountingServerInterface
 {
-  PromiseStream<int> addCount;
-  PromiseStream<int> subtractCount;
-  PromiseStream<Promise<int>> getCount;
+  RequestStream<int> addCount;
+  RequestStream<int> subtractCount;
+  RequestStream<ReplyPromise<int>> getCount;
 
   template <class Ar>
   void serialize(Ar &ar)
@@ -20,7 +20,6 @@ struct CountingServerInterface
   }
 };
 
-// Define the actor that handles counting requests
 ACTOR Future<Void> countingServer(CountingServerInterface csi)
 {
   state int count = 0;
@@ -37,7 +36,7 @@ ACTOR Future<Void> countingServer(CountingServerInterface csi)
       {
         count -= subtractValue;
       }
-      when(Promise<int> reply = waitNext(csi.getCount.getFuture()))
+      when(ReplyPromise<int> reply = waitNext(csi.getCount.getFuture()))
       {
         reply.send(count);
       }
@@ -45,31 +44,35 @@ ACTOR Future<Void> countingServer(CountingServerInterface csi)
   }
 }
 
-// Server setup to listen for connections and provide the CountingServerInterface
-ACTOR Future<Void> startServer(uint16_t port)
+ACTOR Future<Void> startServer()
 {
-  state CountingServerInterface csi;
-  state Reference<IListener> listener = wait(TCPListener::create(port));
-  printf("Server is listening on port %d...\n", port);
+  CountingServerInterface csi;
 
   // Start the counting server actor
   countingServer(csi);
 
-  loop
-  {
-    // Accept a new connection from a client
-    state Reference<IConnection> conn = wait(listener->accept());
-    printf("New connection accepted.\n");
+  // Register the CountingServerInterface for clients
+  FlowTransport::transport().addEndpoint(csi.addCount.getEndpoint());
+  FlowTransport::transport().addEndpoint(csi.subtractCount.getEndpoint());
+  FlowTransport::transport().addEndpoint(csi.getCount.getEndpoint());
 
-    // Serialize the CountingServerInterface to send it to the client
-    wait(FlowTransport::transport().sendUnreliable(conn, csi));
-  }
+  printf("Server is running and waiting for clients...\n");
+
+  // Keep the server running
+  wait(Never());
+  return Void();
 }
 
-// Entry point for the server
 int main(int argc, char **argv)
 {
-  // Run the server on port 8080
-  startServer(8080);
+  // Initialize the Flow network
+  Error::init();
+  FlowTransport::createInstance(false, 1);
+
+  // Start the server
+  startServer();
+
+  // Run the network
+  g_network->run();
   return 0;
 }

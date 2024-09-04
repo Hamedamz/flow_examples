@@ -7,23 +7,21 @@
 #include "fdbrpc/fdbrpc.h"
 #include "flow/TLSConfig.actor.g.h"
 
-// Client-side function to interact with the server
-ACTOR Future<Void> client(std::string address, uint16_t port)
+ACTOR Future<Void> client(NetworkAddress serverAddress)
 {
-  // Connect to the server
-  state Reference<IConnection> conn = wait(TCP::connect(address, port));
-  printf("Connected to server at %s:%d\n", address.c_str(), port);
+  CountingServerInterface csi;
 
-  // Deserialize the CountingServerInterface received from the server
-  state CountingServerInterface csi;
-  wait(FlowTransport::transport().receiveUnreliable(conn, csi));
+  // Set up the server endpoints on the client side
+  csi.addCount = RequestStream<int>(Endpoint({serverAddress}, UID(1, 0)));
+  csi.subtractCount = RequestStream<int>(Endpoint({serverAddress}, UID(2, 0)));
+  csi.getCount = RequestStream<ReplyPromise<int>>(Endpoint({serverAddress}, UID(3, 0)));
 
   // Send commands to the server
   csi.addCount.send(5);
   csi.subtractCount.send(2);
 
   // Request the current count
-  Promise<int> finalCount;
+  ReplyPromise<int> finalCount;
   csi.getCount.send(finalCount);
 
   int value = wait(finalCount.getFuture());
@@ -32,10 +30,15 @@ ACTOR Future<Void> client(std::string address, uint16_t port)
   return Void();
 }
 
-// Entry point for the client
 int main(int argc, char **argv)
 {
-  // Connect to the server at 192.168.1.1 on port 8080
-  client("10.0.0.1", 8080);
+  Error::init();
+  FlowTransport::createInstance(false, 1);
+
+  NetworkAddress serverAddress("10.10.1.1", 8080);
+
+  client(serverAddress);
+
+  g_network->run();
   return 0;
 }
