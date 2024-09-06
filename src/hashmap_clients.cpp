@@ -49,7 +49,7 @@ ACTOR Future<Void> run_client()
     platformInit();
     g_network = newNet2(TLSConfig(), false, true);
     FlowTransport::createInstance(1, 0, WLTOKEN_COUNT_IN_TUTORIAL);
-    serverAddress = NetworkAddress::parse("172.17.0.1:7650");
+    serverAddress = NetworkAddress::parse("10.10.1.1:7650");
     state HashmapServerInterface hsi;
     hsi.getInterface = RequestStream<HashmapInterfaceRequest>(Endpoint::wellKnown({serverAddress}, WLTOKEN_ECHO_SERVER));
     HashmapServerInterface s = wait(hsi.getInterface.getReply(HashmapInterfaceRequest()));

@@ -24,7 +24,7 @@ ACTOR Future<Void> serveHashmapServerInterface()
     platformInit();
     g_network = newNet2(TLSConfig(), false, true);
     FlowTransport::createInstance(0, 0, WLTOKEN_COUNT_IN_TUTORIAL);
-    auto serverAddress = NetworkAddress::parse("0.0.0.0:7650");
+    auto serverAddress = NetworkAddress::parse("172.17.0.1:7650");
     auto listenError = FlowTransport::transport().bind(serverAddress, serverAddress);
     if (listenError.isError())
     {
